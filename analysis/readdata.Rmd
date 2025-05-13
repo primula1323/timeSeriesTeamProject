@@ -21,12 +21,240 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+library(glue)
+library(forecast)
+library(tseries)
 ```
 
 ## data read
 
 ```{r}
-df <- read_csv('../data/1990_data.csv', n_max = 500, locale = locale(encoding = "CP949"))
-#223번째부터 읽기 
+data_read <- function(inputyear){
+    path <- glue('../data/{inputyear}_data.csv')
+    df <- read_csv(path, locale = locale(encoding = "CP949"))
+    return(df)
+}
 ```
+
+교육 : 대충 223번째부터 읽기 
+
+
+```{r}
+dataframes <- list()
+for (i in 1990:1999) {
+    fname <- glue('df_{i}')
+#    cname <- glue('col_{i}')
+    temp_df <- data_read(i)
+#    cname <- names(temp_df)    
+    dataframes[[fname]] <- temp_df
+}
+```
+
+
+
+
+
+
+
+```{r}
+names(dataframes$df_1990)
+dataframes$df_1995[24]
+```
+
+
+
+
+
+223:231이 교육비 부분. 
+
+
+2011~개인연금수입, 퇴직연금수입 추가됨. 
+
+
+```{r}
+calXt <- function(df) {
+  df %>%
+    mutate(year = 조사년도, quarter = str_sub(`조사월(분기)`, 1, 1)) %>%
+    group_by(year, quarter) %>%
+    summarise(student = mean(`학원및보습교육(성인미포함)`, na.rm = TRUE), adult = mean(성인학원교육), .groups = "drop") 
+}
+
+final_df <- calXt(dataframes$df_1990)
+for (i in 1991:1999) {
+    df_name <- paste0("df_", i)
+    df <- dataframes[[df_name]]
+    final_df <- rbind(final_df, calXt(df))
+}
+final_df <- rbind(final_df, read_csv('../data/2000-2016data.csv')) %>%
+    mutate(year = as.character(year), quarter = as.character(quarter))
+
+df_test <- read_csv('../data/2019-2020data.csv') %>%
+    mutate(year = as.character(year), quarter = as.character(quarter))
+
+
+```
+
+
+```{r}
+data_matrix <- as.matrix(final_df[, c("adult", "student")])
+final_ts <- ts(data_matrix,
+               start = c(1990, 1),
+               frequency = 4)
+```
+
+
+
+```{r}
+ts_adult <- final_ts[, "adult"]
+model_auto_arima <- auto.arima(ts_adult)
+print(model_auto_arima)
+```
+
+
+
+저출산? 
+
+가구별 평균 사교육 지출액으로 ...
+
+
+
+
+
+
+## 물가 조정
+
+```{r}
+cpi_data <- read_csv('../data/cpi_quaterly.csv', locale = locale(encoding = "CP949"))
+quarterly_cpi <- cpi_data %>% pivot_longer(
+    cols = -'시도별',
+    names_to = "year_quarter",
+    values_to = "cpi"
+  ) %>% select(-시도별) %>%
+    transmute(year = str_sub(year_quarter, 1, 4), quarter = str_sub(year_quarter, 6, 6), cpi = cpi, coef = 100/cpi)
+```
+
+
+```{r}
+df <- left_join(final_df, quarterly_cpi, by = c('year', 'quarter')) %>%
+    mutate(adj_student = student*coef, adj_adult = adult*coef)
+write_csv(df, '../data/cpi_adjusted_dataframe.csv')
+
+for (i in 2017:2018) {
+    for (j in 1:4) {
+        new_row_list <- list(i, j, 139051.6, 11021.51)
+        new_row_df <- as.data.frame(t(unlist(new_row_list))) 
+        colnames(new_row_df) <- names(df_test)
+        df_test <- rbind(df_test, new_row_df)
+    }
+}
+
+df_test <- df_test %>% arrange(year, quarter)
+
+
+df_test2 <- left_join(df_test, quarterly_cpi, by = c('year', 'quarter')) %>%
+    mutate(adj_student = student*coef, adj_adult = adult*coef)
+
+temp_df <- rbind(df, df_test2)
+```
+
+연령 내 가구원 수의 변동? 
+
+```{r}
+data_matrix <- as.matrix(df[, c("adj_adult", "adj_student")])
+final_ts <- ts(data_matrix,
+               start = c(1990, 1),
+               frequency = 4)
+ts_student <- final_ts[, "adj_student"]
+ts_student
+
+
+data_matrix <- as.matrix(temp_df[, c("adj_adult", "adj_student")])
+test_ts <- ts(data_matrix,
+               start = c(1990, 1),
+               frequency = 4)
+ts_student_test <- test_ts[, "adj_student"]
+
+
+ts_naj_student <- final_ts[, 'student']
+ts_adult <- final_ts[, "adj_adult"]
+```
+
+```{r}
+# ACF 및 PACF 그래프 확인
+acf(ts_student)
+pacf(ts_student)
+
+# 단위근 검정
+adf.test(ts_student)
+
+# 플롯 
+plot(ts_student)
+
+
+acf(ts_adult)
+pacf(ts_adult)
+adf.test(ts_adult)
+plot(ts_adult)
+```
+
+```{r}
+# 1차 차분
+edu_ts_diff <- diff(ts_student)
+plot(edu_ts_diff, main = "차분된 학생 사교육비")
+acf(edu_ts_diff)
+pacf(edu_ts_diff)
+adf.test(edu_ts_diff)
+```
+
+
+```{r}
+model_auto_arima <- auto.arima(edu_ts_diff)
+print(model_auto_arima)
+model_arima <- arima(ts_student,
+                     order = c(3, 1, 0),
+                     seasonal = list(order = c(1, 0, 0), period = 4))
+#model_arima <- arima(ts_student,
+#                     order = c(3, 1, 0))
+model_arima
+
+model_auto_arima <- auto.arima(ts_adult)
+print(model_auto_arima)
+model_arima <- arima(ts_adult,
+                     order = c(1, 1, 0),
+                     seasonal = list(order = c(1, 0, 0), period = 4))
+#model_arima <- arima(ts_student,
+#                     order = c(3, 1, 0))
+model_arima
+
+```
+
+
+```{r}
+# 잔차 분석
+acf(model_arima$residuals)
+Box.test(model_arima$residuals, lag = 10, type = "Ljung-Box")
+```
+
+```{r}
+# 예측 기간 설정
+forecast_years <- 2017:2020
+forecast_quarters <- 1:4
+forecast_length <- length(forecast_years) * length(forecast_quarters)
+
+# 예측
+forecast_arima <- forecast(model_arima, h = forecast_length)
+
+# 예측 결과 확인
+print(forecast_arima)
+
+# 예측 결과 시각화
+plot(forecast_arima,
+     main = "사교육비 예측 결과",
+     xlab = "연도",
+     ylab = "사교육비 (CPI 조정)")
+
+plot(ts_student_test)
+```
+
+
 
