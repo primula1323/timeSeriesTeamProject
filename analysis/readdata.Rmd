@@ -1,0 +1,32 @@
+---
+title: "readdata"
+author: "Na SeungChan"
+date: "`r Sys.Date()`"
+mainfont : NanumGothic
+monofont : UnShinmun
+header-includes:
+  - \usepackage{fvextra}
+  - \fvset{breaklines}
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+  pdf_document:
+    latex_engine: xelatex
+    keep_tex: true
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## data read
+
+```{r}
+df <- read_csv('../data/1990_data.csv', n_max = 500, locale = locale(encoding = "CP949"))
+#223번째부터 읽기 
+```
+
