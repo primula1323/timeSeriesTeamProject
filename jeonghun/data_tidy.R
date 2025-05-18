@@ -160,3 +160,5 @@ data2
 write.csv(data2, file = "D://시계열프로젝트//csv//2019-2024data.csv", row.names = FALSE)
 
 
+
+
