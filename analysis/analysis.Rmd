@@ -107,7 +107,7 @@ print(forecast_arima)
 plot(forecast_arima,
      main = "사교육비 예측 결과",
      xlab = "연도",
-     ylab = "사교육비 (CPI 조정)")
+     ylab = "가구당 1인 평균 사교육비 (미성년, CPI 조정)")
 lines(real_data, col = 'red', lwd = 2)
 
 ```
