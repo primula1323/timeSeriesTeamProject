@@ -1,5 +1,5 @@
 ---
-title: "readdata"
+title: "analysis"
 author: "Na SeungChan"
 date: "`r Sys.Date()`"
 mainfont : NanumGothic
@@ -151,10 +151,10 @@ lines(real_data, col = 'red', lwd = 2)
 
 # Baseline Analysis
 
-## adj_adult
+## adj_perhigh
 
 ```{r}
-colname <- 'adj_adult'
+colname <- 'adj_perhigh'
 ```
 
 
@@ -265,5 +265,475 @@ autoplot(fc_log_result$forecast_obj) + # ggplot2 기반 시각화
 
 
 
+# Baseline Analysis
+
+## adj_student
+
+```{r}
+colname <- 'adj_student'
+```
+
+
+```{r}
+ts_data <- to_ts(colname)
+real_data <- to_ts_test(colname)
+ts_log_data <- log(ts_data)
+real_log_data <- log(real_data)
+plot(ts_data, main = paste0('Time series Plot for ', colname))
+plot(decompose(ts_data, type="additive"))
+```
+
+
+## 기본 autoarima
+
+```{r}
+model_auto_arima <- auto.arima(ts_data, trace = TRUE)
+print(model_auto_arima)
+```
+
+
+```{r}
+acf(ts_data, main = paste("ACF for", colname))
+pacf(ts_data, main = paste("PACF for", colname))
+adf.test(ts_data)
+```
+
+1회 차분하여 대립가설을 채택. 차분 1회는 적절하다.
+
+
+```{r}
+acf(diff(ts_data), main = paste("ACF for", colname))
+pacf(diff(ts_data), main = paste("PACF for", colname))
+adf.test(diff(ts_data))
+```
+
+
+## 모델 진단
+
+```{r}
+checkresiduals(model_auto_arima)
+```
+
+
+
+
+
+## 로그변환 적용
+
+
+```{r}
+acf(ts_log_data, main = paste("ACF for", colname))
+pacf(ts_log_data, main = paste("PACF for", colname))
+adf.test(ts_log_data)
+```
+
+```{r}
+model_log_auto_arima <- auto.arima(ts_log_data, trace = TRUE)
+print(model_log_auto_arima)
+```
+
+
+```{r}
+acf(diff(ts_log_data), main = paste("ACF for", colname))
+pacf(diff(ts_log_data), main = paste("PACF for", colname))
+adf.test(diff(ts_log_data))
+```
+
+## 예측 
+
+
+```{r}
+forecast_and_evaluate <- function(model_object, actual_future_data) {
+  #예측 기간 설정 
+  forecast_years <- 2017:2023
+  forecast_quarters <- 1:4
+  forecast_length <- length(forecast_years) * length(forecast_quarters)
+  
+  #예측
+  fc <- forecast(model_object, h = forecast_length)
+  
+  if (!is.null(actual_future_data)) {
+    print(accuracy(fc, actual_future_data))
+    return(list(forecast_object = fc, accuracy_metrics = accuracy(fc, actual_future_data)))
+  } else {
+    return(list(forecast_object = fc, accuracy_metrics = NULL))
+  }
+}
+
+fc_result <- forecast_and_evaluate(model_auto_arima, real_data)
+  
+autoplot(fc_result$forecast_obj) + # ggplot2 기반 시각화
+  autolayer(real_data, series = "Actual Data") +
+  ggtitle(paste("Forecast vs Actual for", model_auto_arima$series)) +
+  theme_minimal()
+```
+
+```{r}
+fc_log_result <- forecast_and_evaluate(model_log_auto_arima, real_log_data)
+
+autoplot(fc_log_result$forecast_obj) + # ggplot2 기반 시각화
+  autolayer(real_log_data, series = "Actual Data") +
+  ggtitle(paste("Forecast vs Actual for", model_auto_arima$series)) +
+  theme_minimal()
+```
+
+
+
+## adj_adult
+
+```{r}
+colname <- 'perstudent_high'
+```
+
+
+```{r}
+ts_data <- to_ts(colname)
+real_data <- to_ts_test(colname)
+ts_log_data <- log(ts_data)
+real_log_data <- log(real_data)
+plot(ts_data, main = paste0('Time series Plot for ', colname))
+plot(decompose(ts_data, type="additive"))
+```
+
+
+## 기본 autoarima
+
+```{r}
+model_auto_arima <- auto.arima(ts_data, trace = TRUE)
+print(model_auto_arima)
+```
+
+
+```{r}
+acf(ts_data, main = paste("ACF for", colname))
+pacf(ts_data, main = paste("PACF for", colname))
+adf.test(ts_data)
+```
+
+1회 차분하여 대립가설을 채택. 차분 1회는 적절하다.
+
+
+```{r}
+acf(diff(ts_data), main = paste("ACF for", colname))
+pacf(diff(ts_data), main = paste("PACF for", colname))
+adf.test(diff(ts_data))
+```
+
+
+## 모델 진단
+
+```{r}
+checkresiduals(model_auto_arima)
+```
+
+
+
+
+
+## 로그변환 적용
+
+
+```{r}
+acf(ts_log_data, main = paste("ACF for", colname))
+pacf(ts_log_data, main = paste("PACF for", colname))
+adf.test(ts_log_data)
+```
+
+```{r}
+model_log_auto_arima <- auto.arima(ts_log_data, trace = TRUE)
+print(model_log_auto_arima)
+```
+
+
+```{r}
+acf(diff(ts_log_data), main = paste("ACF for", colname))
+pacf(diff(ts_log_data), main = paste("PACF for", colname))
+adf.test(diff(ts_log_data))
+```
+
+## 예측 
+
+
+```{r}
+forecast_and_evaluate <- function(model_object, actual_future_data) {
+  #예측 기간 설정 
+  forecast_years <- 2017:2023
+  forecast_quarters <- 1:4
+  forecast_length <- length(forecast_years) * length(forecast_quarters)
+  
+  #예측
+  fc <- forecast(model_object, h = forecast_length)
+  
+  if (!is.null(actual_future_data)) {
+    print(accuracy(fc, actual_future_data))
+    return(list(forecast_object = fc, accuracy_metrics = accuracy(fc, actual_future_data)))
+  } else {
+    return(list(forecast_object = fc, accuracy_metrics = NULL))
+  }
+}
+
+fc_result <- forecast_and_evaluate(model_auto_arima, real_data)
+  
+autoplot(fc_result$forecast_obj) + # ggplot2 기반 시각화
+  autolayer(real_data, series = "Actual Data") +
+  ggtitle(paste("Forecast vs Actual for", model_auto_arima$series)) +
+  theme_minimal()
+```
+
+```{r}
+fc_log_result <- forecast_and_evaluate(model_log_auto_arima, real_log_data)
+
+autoplot(fc_log_result$forecast_obj) + # ggplot2 기반 시각화
+  autolayer(real_log_data, series = "Actual Data") +
+  ggtitle(paste("Forecast vs Actual for", model_auto_arima$series)) +
+  theme_minimal()
+```
+
+
+
+# student
+
+```{r}
+colname <- 'student'
+```
+
+
+```{r}
+ts_data <- to_ts(colname)
+real_data <- to_ts_test(colname)
+ts_log_data <- log(ts_data)
+real_log_data <- log(real_data)
+plot(ts_data, main = paste0('Time series Plot for ', colname))
+plot(decompose(ts_data, type="additive"))
+```
+
+
+## 기본 autoarima
+
+```{r}
+model_auto_arima <- auto.arima(ts_data, trace = TRUE)
+print(model_auto_arima)
+```
+
+
+```{r}
+acf(ts_data, main = paste("ACF for", colname))
+pacf(ts_data, main = paste("PACF for", colname))
+adf.test(ts_data)
+```
+
+1회 차분하여 대립가설을 채택. 차분 1회는 적절하다.
+
+
+```{r}
+acf(diff(ts_data), main = paste("ACF for", colname))
+pacf(diff(ts_data), main = paste("PACF for", colname))
+adf.test(diff(ts_data))
+```
+
+
+## 모델 진단
+
+```{r}
+checkresiduals(model_auto_arima)
+```
+
+
+
+
+
+## 로그변환 적용
+
+
+```{r}
+acf(ts_log_data, main = paste("ACF for", colname))
+pacf(ts_log_data, main = paste("PACF for", colname))
+adf.test(ts_log_data)
+```
+
+```{r}
+model_log_auto_arima <- auto.arima(ts_log_data, trace = TRUE)
+print(model_log_auto_arima)
+```
+
+
+```{r}
+acf(diff(ts_log_data), main = paste("ACF for", colname))
+pacf(diff(ts_log_data), main = paste("PACF for", colname))
+adf.test(diff(ts_log_data))
+```
+
+## 예측 
+
+
+```{r}
+forecast_and_evaluate <- function(model_object, actual_future_data) {
+  #예측 기간 설정 
+  forecast_years <- 2017:2023
+  forecast_quarters <- 1:4
+  forecast_length <- length(forecast_years) * length(forecast_quarters)
+  
+  #예측
+  fc <- forecast(model_object, h = forecast_length)
+  
+  if (!is.null(actual_future_data)) {
+    print(accuracy(fc, actual_future_data))
+    return(list(forecast_object = fc, accuracy_metrics = accuracy(fc, actual_future_data)))
+  } else {
+    return(list(forecast_object = fc, accuracy_metrics = NULL))
+  }
+}
+
+fc_result <- forecast_and_evaluate(model_auto_arima, real_data)
+  
+autoplot(fc_result$forecast_obj) + # ggplot2 기반 시각화
+  autolayer(real_data, series = "Actual Data") +
+  ggtitle(paste("Forecast vs Actual for", model_auto_arima$series)) +
+  theme_minimal()
+```
+
+```{r}
+fc_log_result <- forecast_and_evaluate(model_log_auto_arima, real_log_data)
+
+autoplot(fc_log_result$forecast_obj) + # ggplot2 기반 시각화
+  autolayer(real_log_data, series = "Actual Data") +
+  ggtitle(paste("Forecast vs Actual for", model_auto_arima$series)) +
+  theme_minimal()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## adj_adult
+
+```{r}
+colname <- 'adj_perele'
+```
+
+
+```{r}
+ts_data <- to_ts(colname)
+real_data <- to_ts_test(colname)
+ts_log_data <- log(ts_data)
+real_log_data <- log(real_data)
+plot(ts_data, main = paste0('Time series Plot for ', colname))
+plot(decompose(ts_data, type="additive"))
+```
+
+
+## 기본 autoarima
+
+```{r}
+model_auto_arima <- auto.arima(ts_data, trace = TRUE)
+print(model_auto_arima)
+```
+
+
+```{r}
+acf(ts_data, main = paste("ACF for", colname))
+pacf(ts_data, main = paste("PACF for", colname))
+adf.test(ts_data)
+```
+
+1회 차분하여 대립가설을 채택. 차분 1회는 적절하다.
+
+
+```{r}
+acf(diff(ts_data), main = paste("ACF for", colname))
+pacf(diff(ts_data), main = paste("PACF for", colname))
+adf.test(diff(ts_data))
+```
+
+
+## 모델 진단
+
+```{r}
+checkresiduals(model_auto_arima)
+```
+
+
+
+
+
+## 로그변환 적용
+
+
+```{r}
+acf(ts_log_data, main = paste("ACF for", colname))
+pacf(ts_log_data, main = paste("PACF for", colname))
+adf.test(ts_log_data)
+```
+
+```{r}
+model_log_auto_arima <- auto.arima(ts_log_data, trace = TRUE)
+print(model_log_auto_arima)
+```
+
+
+```{r}
+acf(diff(ts_log_data), main = paste("ACF for", colname))
+pacf(diff(ts_log_data), main = paste("PACF for", colname))
+adf.test(diff(ts_log_data))
+```
+
+## 예측 
+
+
+```{r}
+forecast_and_evaluate <- function(model_object, actual_future_data) {
+  #예측 기간 설정 
+  forecast_years <- 2017:2023
+  forecast_quarters <- 1:4
+  forecast_length <- length(forecast_years) * length(forecast_quarters)
+  
+  #예측
+  fc <- forecast(model_object, h = forecast_length)
+  
+  if (!is.null(actual_future_data)) {
+    print(accuracy(fc, actual_future_data))
+    return(list(forecast_object = fc, accuracy_metrics = accuracy(fc, actual_future_data)))
+  } else {
+    return(list(forecast_object = fc, accuracy_metrics = NULL))
+  }
+}
+
+fc_result <- forecast_and_evaluate(model_auto_arima, real_data)
+  
+autoplot(fc_result$forecast_obj) + # ggplot2 기반 시각화
+  autolayer(real_data, series = "Actual Data") +
+  ggtitle(paste("Forecast vs Actual for", model_auto_arima$series)) +
+  theme_minimal()
+```
+
+```{r}
+fc_log_result <- forecast_and_evaluate(model_log_auto_arima, real_log_data)
+
+autoplot(fc_log_result$forecast_obj) + # ggplot2 기반 시각화
+  autolayer(real_log_data, series = "Actual Data") +
+  ggtitle(paste("Forecast vs Actual for", model_auto_arima$series)) +
+  theme_minimal()
+```
 
 
