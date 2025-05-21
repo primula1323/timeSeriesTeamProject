@@ -1,0 +1,464 @@
+---
+title: "mid_paper"
+author: "Na SeungChan"
+date: "`r Sys.Date()`"
+mainfont : NanumGothic
+monofont : UnShinmun
+header-includes:
+  - \usepackage{fvextra}
+  - \fvset{breaklines}
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+  pdf_document:
+    latex_engine: xelatex
+    keep_tex: true
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(glue)
+library(forecast)
+library(tseries)
+```
+
+
+# CPI 조정
+
+```{r}
+df_train_raw <- read_csv('../data/1990-2016data.csv')
+df_cpi_raw <- read_csv('../data/cpi_cleaned.csv')
+
+df_test_raw <- read_csv('../data/2019-2024data.csv')
+```
+
+df_train_raw는 여러 절차를 통해 cleaned된 data이고, df_cpi_raw는 매 분기별 CPI data이며, df_test_raw는 2019년 이후의 data에 같은 전처리 절차를 거친 데이터이다.
+
+
+
+```{r}
+df_train <- left_join(df_train_raw, df_cpi_raw, by = c('year', 'quarter')) %>% 
+  mutate(adj_student = student*coef, adj_adult = adult*coef, adj_perele = perstudent_elementary*coef, adj_perhigh = perstudent_high * coef)
+
+df_test <- left_join(df_test_raw, df_cpi_raw, by = c('year', 'quarter')) %>% 
+  mutate(adj_student = student*coef, adj_adult = adult*coef, adj_perele = perstudent_elementary*coef, adj_perhigh = perstudent_high * coef)
+```
+
+CPI 조정 시, 분기별로 `coef` 칼럼의 값은 해당 분기의 CPI를 기준 분기의 CPI(100)으로 나눈 값이다. 즉, CPI가 2020년을 기준으로 100으로 지정되어 있으므로 해당 CPI 조정을 통해 2020년 기준의 물가로 표준화된 CPI 조정 결과를 얻을 수 있다.
+
+CPI 조정을 하는 이유는, '학원비의 변화'를 파악하기 위해서이다. CPI를 조정하지 않는다고 해도 시계열 데이터에서 예측 모델을 돌릴 수 없는 것은 아니다. 그러나, CPI를 조정하지 않은 상태에서 돌아간 모델의 결과는 '학원비가 증가 추세이다'라는 의미로 해석할 수 없고, 물가상승의 영향인지 학원비의 부담 증가 때문인지 모호해진다.
+
+
+## time series data making
+
+
+```{r}
+to_ts <- function(input_col, datum = df_train){
+  data_matrix <- as.matrix(datum[, input_col])
+  final_ts <- ts(data_matrix,
+                 start = c(1990, 1),
+                 frequency = 4)
+  return(final_ts)  
+}
+to_ts_test <- function(input_col, datum = df_test){
+  data_matrix <- as.matrix(datum[, input_col])
+  final_ts <- ts(data_matrix,
+                 start = c(2019, 1),
+                 frequency = 4)
+  return(final_ts)  
+}
+```
+
+해당 함수는 칼럼명과 데이터프레임을 입력받아, 해당 칼럼에 해당하는 시계열 자료(ts)를 생성하는 함수이다. 
+
+
+
+
+## 기본 autoarima : 1차 분석
+
+```{r}
+ts_data <- to_ts('student')
+real_data <- to_ts_test('student')
+
+model_auto_arima <- auto.arima(ts_data)
+print(model_auto_arima)
+```
+
+
+```{r}
+# 예측 기간 설정
+forecast_years <- 2017:2023
+forecast_quarters <- 1:4
+forecast_length <- length(forecast_years) * length(forecast_quarters)
+
+# 예측
+forecast_arima <- forecast(model_auto_arima, h = forecast_length)
+
+# 예측 결과 확인
+print(forecast_arima)
+
+# 예측 결과 시각화
+plot(forecast_arima,
+     main = "사교육비 예측 결과",
+     xlab = "연도",
+     ylab = "가구당 1인 평균 사교육비 (미성년, CPI 미조정)")
+lines(real_data, col = 'red', lwd = 2)
+
+```
+
+
+해당 결과가 만족스럽지 않아, 추가적인 전처리를 수행하고, 가구별 학생 1인당 학원비를 계산하였다. 이를 기반으로 다시 굴린 모델은 다음과 같다.
+
+
+
+
+
+
+
+
+# 2nd analysis
+
+## adj_perhigh
+
+```{r}
+colname <- 'adj_perhigh'
+```
+
+가구별 고등학생 1인당 평균 사교육비이다. 
+
+```{r}
+ts_data <- to_ts(colname)
+real_data <- to_ts_test(colname)
+ts_log_data <- log(ts_data)
+real_log_data <- log(real_data)
+plot(ts_data, main = paste0('Time series Plot for ', colname))
+plot(decompose(ts_data, type="additive"))
+```
+
+
+## 기본 autoarima
+
+```{r}
+model_auto_arima <- auto.arima(ts_data, trace = TRUE)
+print(model_auto_arima)
+```
+
+
+```{r}
+acf(ts_data, main = paste("ACF for", colname))
+pacf(ts_data, main = paste("PACF for", colname))
+adf.test(ts_data)
+```
+
+1회 차분하여 대립가설을 채택. 차분 1회는 적절하다.
+
+
+```{r}
+acf(diff(ts_data), main = paste("ACF for", colname))
+pacf(diff(ts_data), main = paste("PACF for", colname))
+adf.test(diff(ts_data))
+```
+
+
+## 모델 진단
+
+```{r}
+checkresiduals(model_auto_arima)
+```
+
+
+
+
+
+## 로그변환 적용
+
+
+```{r}
+acf(ts_log_data, main = paste("ACF for", colname))
+pacf(ts_log_data, main = paste("PACF for", colname))
+adf.test(ts_log_data)
+```
+
+```{r}
+model_log_auto_arima <- auto.arima(ts_log_data, trace = TRUE)
+print(model_log_auto_arima)
+```
+
+
+```{r}
+acf(diff(ts_log_data), main = paste("ACF for", colname))
+pacf(diff(ts_log_data), main = paste("PACF for", colname))
+adf.test(diff(ts_log_data))
+```
+
+
+로그변환의 경우, 그 효용성이 특별히 높지 않은 것으로 판단된다. 이외의 다른 칼럼에서도 로그변환은 일반적으로 원래 데이터를 그대로 쓴 것보다 좋은 결과를 내지 못했다.
+
+
+## 예측 
+
+
+```{r}
+forecast_and_evaluate <- function(model_object, actual_future_data) {
+  #예측 기간 설정 
+  forecast_years <- 2017:2023
+  forecast_quarters <- 1:4
+  forecast_length <- length(forecast_years) * length(forecast_quarters)
+  
+  #예측
+  fc <- forecast(model_object, h = forecast_length)
+  
+  if (!is.null(actual_future_data)) {
+    print(accuracy(fc, actual_future_data))
+    return(list(forecast_object = fc, accuracy_metrics = accuracy(fc, actual_future_data)))
+  } else {
+    return(list(forecast_object = fc, accuracy_metrics = NULL))
+  }
+}
+
+fc_result <- forecast_and_evaluate(model_auto_arima, real_data)
+  
+autoplot(fc_result$forecast_obj) + # ggplot2 기반 시각화
+  autolayer(real_data, series = "Actual Data") +
+  ggtitle(paste("Forecast vs Actual for", model_auto_arima$series)) +
+  theme_minimal()
+```
+
+```{r}
+fc_log_result <- forecast_and_evaluate(model_log_auto_arima, real_log_data)
+
+autoplot(fc_log_result$forecast_obj) + # ggplot2 기반 시각화
+  autolayer(real_log_data, series = "Actual Data") +
+  ggtitle(paste("Forecast vs Actual for", model_auto_arima$series)) +
+  theme_minimal()
+```
+
+로그변환된 모델은 제대로 된 예측을 하지 못하는 것으로 보인다.원 데이터를 활용한 예측 결과는 오차범위에 들어가는 수준이나, 상승 추세가 이전에 비해 강하다. 추가 분석 가능성이 있으나, 하필 2017~2018 데이터가 존재하지 않아 추가 분석 수행이 어렵다.
+
+
+## adj_student
+
+```{r}
+colname <- 'adj_student'
+```
+
+물가가 조정된 학생 전체를 대상으로도 해당 분석을 수행하였다. 1차 분석의 학생 결과와 비교할 수 있다.
+
+```{r}
+ts_data <- to_ts(colname)
+real_data <- to_ts_test(colname)
+ts_log_data <- log(ts_data)
+real_log_data <- log(real_data)
+plot(ts_data, main = paste0('Time series Plot for ', colname))
+plot(decompose(ts_data, type="additive"))
+```
+
+
+## 기본 autoarima
+
+```{r}
+model_auto_arima <- auto.arima(ts_data, trace = TRUE)
+print(model_auto_arima)
+```
+
+
+```{r}
+acf(ts_data, main = paste("ACF for", colname))
+pacf(ts_data, main = paste("PACF for", colname))
+adf.test(ts_data)
+```
+
+1회 차분하여 대립가설을 채택. 차분 1회는 적절하다. 데이터 전반적으로 학생 수의 증가 추세가 있어 차분이 모델 수행 결과 들어가고, 학기 진행이 반복되고 수능이 끝나거나 방학과 같은 특정 이벤트가 매년 반족되기 때문에 계절성 역시 관측될 수밖에 없다. 
+
+
+```{r}
+acf(diff(ts_data), main = paste("ACF for", colname))
+pacf(diff(ts_data), main = paste("PACF for", colname))
+adf.test(diff(ts_data))
+```
+
+
+## 모델 진단
+
+```{r}
+checkresiduals(model_auto_arima)
+```
+
+
+
+
+
+## 로그변환 적용
+
+
+```{r}
+acf(ts_log_data, main = paste("ACF for", colname))
+pacf(ts_log_data, main = paste("PACF for", colname))
+adf.test(ts_log_data)
+```
+
+```{r}
+model_log_auto_arima <- auto.arima(ts_log_data, trace = TRUE)
+print(model_log_auto_arima)
+```
+
+
+```{r}
+acf(diff(ts_log_data), main = paste("ACF for", colname))
+pacf(diff(ts_log_data), main = paste("PACF for", colname))
+adf.test(diff(ts_log_data))
+```
+
+## 예측 
+
+
+```{r}
+forecast_and_evaluate <- function(model_object, actual_future_data) {
+  #예측 기간 설정 
+  forecast_years <- 2017:2023
+  forecast_quarters <- 1:4
+  forecast_length <- length(forecast_years) * length(forecast_quarters)
+  
+  #예측
+  fc <- forecast(model_object, h = forecast_length)
+  
+  if (!is.null(actual_future_data)) {
+    print(accuracy(fc, actual_future_data))
+    return(list(forecast_object = fc, accuracy_metrics = accuracy(fc, actual_future_data)))
+  } else {
+    return(list(forecast_object = fc, accuracy_metrics = NULL))
+  }
+}
+
+fc_result <- forecast_and_evaluate(model_auto_arima, real_data)
+  
+autoplot(fc_result$forecast_obj) + # ggplot2 기반 시각화
+  autolayer(real_data, series = "Actual Data") +
+  ggtitle(paste("Forecast vs Actual for", model_auto_arima$series)) +
+  theme_minimal()
+```
+
+```{r}
+fc_log_result <- forecast_and_evaluate(model_log_auto_arima, real_log_data)
+
+autoplot(fc_log_result$forecast_obj) + # ggplot2 기반 시각화
+  autolayer(real_log_data, series = "Actual Data") +
+  ggtitle(paste("Forecast vs Actual for", model_auto_arima$series)) +
+  theme_minimal()
+```
+
+
+
+## adj_perhigh
+
+```{r}
+colname <- 'perstudent_high'
+```
+
+
+```{r}
+ts_data <- to_ts(colname)
+real_data <- to_ts_test(colname)
+ts_log_data <- log(ts_data)
+real_log_data <- log(real_data)
+plot(ts_data, main = paste0('Time series Plot for ', colname))
+plot(decompose(ts_data, type="additive"))
+```
+
+
+## 기본 autoarima
+
+```{r}
+model_auto_arima <- auto.arima(ts_data, trace = TRUE)
+print(model_auto_arima)
+```
+
+
+```{r}
+acf(ts_data, main = paste("ACF for", colname))
+pacf(ts_data, main = paste("PACF for", colname))
+adf.test(ts_data)
+```
+
+
+```{r}
+acf(diff(ts_data), main = paste("ACF for", colname))
+pacf(diff(ts_data), main = paste("PACF for", colname))
+adf.test(diff(ts_data))
+```
+
+
+## 모델 진단
+
+```{r}
+checkresiduals(model_auto_arima)
+```
+
+잔차가 정규분포를 살짝 벗어난다.
+
+
+
+## 로그변환 적용
+
+
+```{r}
+acf(ts_log_data, main = paste("ACF for", colname))
+pacf(ts_log_data, main = paste("PACF for", colname))
+adf.test(ts_log_data)
+```
+
+```{r}
+model_log_auto_arima <- auto.arima(ts_log_data, trace = TRUE)
+print(model_log_auto_arima)
+```
+
+
+```{r}
+acf(diff(ts_log_data), main = paste("ACF for", colname))
+pacf(diff(ts_log_data), main = paste("PACF for", colname))
+adf.test(diff(ts_log_data))
+```
+
+## 예측 
+
+
+```{r}
+forecast_and_evaluate <- function(model_object, actual_future_data) {
+  #예측 기간 설정 
+  forecast_years <- 2017:2023
+  forecast_quarters <- 1:4
+  forecast_length <- length(forecast_years) * length(forecast_quarters)
+  
+  #예측
+  fc <- forecast(model_object, h = forecast_length)
+  
+  if (!is.null(actual_future_data)) {
+    print(accuracy(fc, actual_future_data))
+    return(list(forecast_object = fc, accuracy_metrics = accuracy(fc, actual_future_data)))
+  } else {
+    return(list(forecast_object = fc, accuracy_metrics = NULL))
+  }
+}
+
+fc_result <- forecast_and_evaluate(model_auto_arima, real_data)
+  
+autoplot(fc_result$forecast_obj) + # ggplot2 기반 시각화
+  autolayer(real_data, series = "Actual Data") +
+  ggtitle(paste("Forecast vs Actual for", model_auto_arima$series)) +
+  theme_minimal()
+```
+
+```{r}
+fc_log_result <- forecast_and_evaluate(model_log_auto_arima, real_log_data)
+
+autoplot(fc_log_result$forecast_obj) + # ggplot2 기반 시각화
+  autolayer(real_log_data, series = "Actual Data") +
+  ggtitle(paste("Forecast vs Actual for", model_auto_arima$series)) +
+  theme_minimal()
+```
+
+특이하게, 고등학교 레벨에서는 1인당 교육비 부담이 로그변환을 통해 잘 예측된다. 다른 사교육비 그룹에 비해서도 꽤나 강한 상승 추세이다.
