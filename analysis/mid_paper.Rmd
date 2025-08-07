@@ -142,9 +142,31 @@ plot(decompose(ts_data, type="additive"))
 
 ## 기본 autoarima
 
+
+
+
 ```{r}
-model_auto_arima <- auto.arima(ts_data, trace = TRUE)
+nsdiffs(ts_data)
+diffxreg <- diff(xregg, differences = D, lag = m)
+
+dx <- diff(ts_data, differences = 1, lag = 4)
+dx
+
+ndiffs(dx)
+
+
+
+```
+
+
+
+
+```{r}
+model_auto_arima <- auto.arima(ts_data, test = 'pp')
 print(model_auto_arima)
+
+?auto.arima
+ndiffs(ts_data)
 ```
 
 
@@ -161,6 +183,15 @@ adf.test(ts_data)
 acf(diff(ts_data), main = paste("ACF for", colname))
 pacf(diff(ts_data), main = paste("PACF for", colname))
 adf.test(diff(ts_data))
+
+acf(dx, main = paste("ACF for", colname))
+pacf(dx, main = paste("PACF for", colname))
+adf.test(dx)
+
+adf.test(diff(dx))
+
+plot(dx)
+ndiffs(dx)
 ```
 
 
@@ -353,10 +384,10 @@ autoplot(fc_log_result$forecast_obj) + # ggplot2 기반 시각화
 
 
 
-## adj_perhigh
+# adj_perele
 
 ```{r}
-colname <- 'perstudent_high'
+colname <- 'adj_perele'
 ```
 
 
@@ -462,3 +493,17 @@ autoplot(fc_log_result$forecast_obj) + # ggplot2 기반 시각화
 ```
 
 특이하게, 고등학교 레벨에서는 1인당 교육비 부담이 로그변환을 통해 잘 예측된다. 다른 사교육비 그룹에 비해서도 꽤나 강한 상승 추세이다.
+
+
+
+####
+
+
+
+```{r}
+plot(df_train$perstudent_elementary[1:40])
+
+plot(df_train$perstudent_high, type = 'l')
+abline(v = seq(from = 4, to = length(df_train$perstudent_high), by = 4), col = "blue")
+```
+
